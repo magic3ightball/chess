@@ -21,3 +21,6 @@ Thumbs.db
 
 # Project specific
 *.log
+
+# macOS app bundle (has hardcoded paths)
+ChessLearner.app/
