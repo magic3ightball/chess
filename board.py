@@ -1,6 +1,7 @@
-"""Chess board rendering using Pygame with Unicode symbol pieces."""
+"""Chess board rendering using Pygame with image or Unicode symbol pieces."""
 import pygame
 import chess
+import os
 from typing import Optional, List, Tuple, Set
 
 # Colors
@@ -46,7 +47,50 @@ class ChessBoard:
         self._create_piece_surfaces()
 
     def _create_piece_surfaces(self):
-        """Pre-render all piece graphics using Unicode symbols."""
+        """Load piece graphics from images, falling back to Unicode symbols."""
+        size = self.square_size
+
+        # Try to load from image files first
+        piece_names = {
+            chess.KING: 'king',
+            chess.QUEEN: 'queen',
+            chess.ROOK: 'rook',
+            chess.BISHOP: 'bishop',
+            chess.KNIGHT: 'knight',
+            chess.PAWN: 'pawn',
+        }
+
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        assets_dir = os.path.join(script_dir, 'assets', 'pieces')
+
+        images_loaded = 0
+        for color in [chess.WHITE, chess.BLACK]:
+            color_name = 'white' if color == chess.WHITE else 'black'
+            for piece_type, piece_name in piece_names.items():
+                # Try to load image file
+                image_path = os.path.join(assets_dir, f'{color_name}_{piece_name}.png')
+                if os.path.exists(image_path):
+                    try:
+                        img = pygame.image.load(image_path).convert_alpha()
+                        # Scale to fit square size with some padding
+                        img = pygame.transform.smoothscale(img, (size - 8, size - 8))
+                        # Center on a square-sized surface
+                        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+                        surface.blit(img, (4, 4))
+                        self.piece_surfaces[(color, piece_type)] = surface
+                        images_loaded += 1
+                    except Exception as e:
+                        print(f"Failed to load {image_path}: {e}")
+
+        if images_loaded > 0:
+            print(f"Loaded {images_loaded}/12 piece images from assets/pieces/")
+
+        # Fall back to Unicode for any missing pieces
+        self._create_unicode_fallbacks()
+
+    def _create_unicode_fallbacks(self):
+        """Create Unicode symbol surfaces for any missing pieces."""
         size = self.square_size
 
         # Unicode chess pieces
@@ -66,6 +110,10 @@ class ChessBoard:
         }
 
         for (color, piece_type), symbol in symbols.items():
+            # Skip if already loaded from image
+            if (color, piece_type) in self.piece_surfaces:
+                continue
+
             surface = pygame.Surface((size, size), pygame.SRCALPHA)
 
             # Colors with outline for visibility
