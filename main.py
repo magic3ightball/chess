@@ -27,6 +27,7 @@ from hints import HintSystem
 from puzzles import PuzzleManager, Puzzle
 from openings import OpeningTrainer, Opening
 from review import GameReviewer
+from endgames import EndgameTrainer, Endgame
 
 # Window settings
 WINDOW_WIDTH = 1000
@@ -53,6 +54,7 @@ class GameMode(Enum):
     PUZZLE = 2
     OPENING = 3
     REVIEW = 4
+    ENDGAME = 5
 
 
 class Button:
@@ -103,6 +105,7 @@ class ChessLearner:
         self.puzzles = PuzzleManager()
         self.openings = OpeningTrainer()
         self.reviewer = GameReviewer(self.ai)
+        self.endgames = EndgameTrainer()
 
         # State
         self.mode = GameMode.MENU
@@ -114,6 +117,7 @@ class ChessLearner:
         self.show_hints = True
         self.current_puzzle: Optional[Puzzle] = None
         self.current_opening: Optional[Opening] = None
+        self.current_endgame: Optional[Endgame] = None
         self.game_over = False
         self.saved_game_moves: List[chess.Move] = []  # Store last game for review
         self.show_eval = False  # Toggle for showing win rate/evaluation
@@ -124,12 +128,13 @@ class ChessLearner:
 
         # Buttons
         self.menu_buttons = [
-            Button(WINDOW_WIDTH // 2 - 120, 180, 240, 50, "Play vs Computer"),
-            Button(WINDOW_WIDTH // 2 - 120, 240, 240, 50, "Resume Game"),
-            Button(WINDOW_WIDTH // 2 - 120, 300, 240, 50, "Puzzles"),
-            Button(WINDOW_WIDTH // 2 - 120, 360, 240, 50, "Opening Trainer"),
-            Button(WINDOW_WIDTH // 2 - 120, 420, 240, 50, "Review Last Game"),
-            Button(WINDOW_WIDTH // 2 - 120, 500, 240, 40, "Quit"),
+            Button(WINDOW_WIDTH // 2 - 120, 160, 240, 45, "Play vs Computer"),
+            Button(WINDOW_WIDTH // 2 - 120, 215, 240, 45, "Resume Game"),
+            Button(WINDOW_WIDTH // 2 - 120, 270, 240, 45, "Puzzles"),
+            Button(WINDOW_WIDTH // 2 - 120, 325, 240, 45, "Opening Trainer"),
+            Button(WINDOW_WIDTH // 2 - 120, 380, 240, 45, "Endgame Trainer"),
+            Button(WINDOW_WIDTH // 2 - 120, 435, 240, 45, "Review Last Game"),
+            Button(WINDOW_WIDTH // 2 - 120, 510, 240, 40, "Quit"),
         ]
 
         self.game_buttons = [
@@ -158,6 +163,7 @@ class ChessLearner:
 
         self.puzzle_list_buttons: List[Button] = []
         self.opening_list_buttons: List[Button] = []
+        self.endgame_list_buttons: List[Button] = []
 
     def run(self):
         """Main game loop."""
@@ -200,13 +206,15 @@ class ChessLearner:
         """Handle mouse movement for button hover effects."""
         all_buttons = []
         if self.mode == GameMode.MENU:
-            all_buttons = self.menu_buttons + self.puzzle_list_buttons + self.opening_list_buttons
+            all_buttons = self.menu_buttons + self.puzzle_list_buttons + self.opening_list_buttons + self.endgame_list_buttons
         elif self.mode == GameMode.PLAY_VS_AI:
             all_buttons = self.game_buttons + self.difficulty_buttons
         elif self.mode == GameMode.PUZZLE:
             all_buttons = self.game_buttons[:4]  # Hint, Undo, New, Menu
         elif self.mode == GameMode.OPENING:
             all_buttons = self.game_buttons[2:4]  # New, Menu
+        elif self.mode == GameMode.ENDGAME:
+            all_buttons = self.game_buttons[:4]  # Hint, Undo, New, Menu
         elif self.mode == GameMode.REVIEW:
             all_buttons = self.review_buttons
 
@@ -223,6 +231,8 @@ class ChessLearner:
             self._handle_puzzle_click(pos)
         elif self.mode == GameMode.OPENING:
             self._handle_opening_click(pos)
+        elif self.mode == GameMode.ENDGAME:
+            self._handle_endgame_click(pos)
         elif self.mode == GameMode.REVIEW:
             self._handle_review_click(pos)
 
@@ -232,24 +242,27 @@ class ChessLearner:
             if btn.is_clicked(pos):
                 if i == 0:  # Play vs AI (new game)
                     self.paused_game = None  # Clear any paused game
-                    self.puzzle_list_buttons = []
-                    self.opening_list_buttons = []
+                    self._clear_submenu_buttons()
                     self._start_game()
                 elif i == 1:  # Resume Game
-                    self.puzzle_list_buttons = []
-                    self.opening_list_buttons = []
+                    self._clear_submenu_buttons()
                     self._resume_game()
                 elif i == 2:  # Puzzles
-                    self.opening_list_buttons = []  # Clear other sub-menu
+                    self.opening_list_buttons = []
+                    self.endgame_list_buttons = []
                     self._show_puzzles()
                 elif i == 3:  # Openings
-                    self.puzzle_list_buttons = []  # Clear other sub-menu
+                    self.puzzle_list_buttons = []
+                    self.endgame_list_buttons = []
                     self._show_openings()
-                elif i == 4:  # Review
+                elif i == 4:  # Endgames
                     self.puzzle_list_buttons = []
                     self.opening_list_buttons = []
+                    self._show_endgames()
+                elif i == 5:  # Review
+                    self._clear_submenu_buttons()
                     self._start_review()
-                elif i == 5:  # Quit
+                elif i == 6:  # Quit
                     self.running = False
                 return
 
@@ -268,6 +281,20 @@ class ChessLearner:
                 if i < len(openings):
                     self._start_opening(openings[i])
                 return
+
+        # Check endgame selection
+        for i, btn in enumerate(self.endgame_list_buttons):
+            if btn.is_clicked(pos):
+                endgames = self.endgames.get_all_endgames()
+                if i < len(endgames):
+                    self._start_endgame(endgames[i])
+                return
+
+    def _clear_submenu_buttons(self):
+        """Clear all submenu button lists."""
+        self.puzzle_list_buttons = []
+        self.opening_list_buttons = []
+        self.endgame_list_buttons = []
 
     def _handle_game_click(self, pos):
         """Handle game mode clicks."""
@@ -346,6 +373,27 @@ class ChessLearner:
                 elif i == 1:  # Menu
                     self.mode = GameMode.MENU
                     self.opening_list_buttons = []
+                return
+
+        self._handle_board_click(pos)
+
+    def _handle_endgame_click(self, pos):
+        """Handle endgame trainer clicks."""
+        for i, btn in enumerate(self.game_buttons[:4]):
+            if btn.is_clicked(pos):
+                if i == 0:  # Hint
+                    hint = self.endgames.get_hint()
+                    if hint:
+                        self.message = hint
+                        self.message_color = ACCENT_COLOR
+                elif i == 1:  # Reset
+                    if self.current_endgame:
+                        self._start_endgame(self.current_endgame)
+                elif i == 2:  # New
+                    self._show_endgames()
+                elif i == 3:  # Menu
+                    self.mode = GameMode.MENU
+                    self.endgame_list_buttons = []
                 return
 
         self._handle_board_click(pos)
@@ -454,6 +502,14 @@ class ChessLearner:
                 if idea:
                     self.message += f" | Tip: {idea}"
 
+        elif self.mode == GameMode.ENDGAME:
+            success, msg = self.endgames.make_move(move)
+            self.message = msg
+            self.message_color = SUCCESS_COLOR if success else ERROR_COLOR
+            if self.endgames.practice_board:
+                self.game.board = self.endgames.practice_board.copy()
+                self.board_view.set_last_move(move)
+
     def _update(self):
         """Update game state."""
         if self.mode == GameMode.PLAY_VS_AI and self.ai_thinking:
@@ -483,7 +539,7 @@ class ChessLearner:
 
         if self.mode == GameMode.MENU:
             self._draw_menu()
-        elif self.mode in [GameMode.PLAY_VS_AI, GameMode.PUZZLE, GameMode.OPENING, GameMode.REVIEW]:
+        elif self.mode in [GameMode.PLAY_VS_AI, GameMode.PUZZLE, GameMode.OPENING, GameMode.ENDGAME, GameMode.REVIEW]:
             self._draw_game()
 
         pygame.display.flip()
@@ -515,10 +571,12 @@ class ChessLearner:
             else:
                 btn.draw(self.screen, self.font)
 
-        # Show puzzle/opening lists if active
+        # Show puzzle/opening/endgame lists if active
         for btn in self.puzzle_list_buttons:
             btn.draw(self.screen, self.small_font)
         for btn in self.opening_list_buttons:
+            btn.draw(self.screen, self.small_font)
+        for btn in self.endgame_list_buttons:
             btn.draw(self.screen, self.small_font)
 
     def _draw_game(self):
@@ -528,6 +586,7 @@ class ChessLearner:
             GameMode.PLAY_VS_AI: "Play vs Computer",
             GameMode.PUZZLE: f"Puzzle: {self.current_puzzle.name if self.current_puzzle else ''}",
             GameMode.OPENING: f"Opening: {self.current_opening.name if self.current_opening else ''}",
+            GameMode.ENDGAME: f"Endgame: {self.current_endgame.name if self.current_endgame else ''}",
             GameMode.REVIEW: "Game Review"
         }
         title = self.title_font.render(mode_titles.get(self.mode, ""), True, ACCENT_COLOR)
@@ -687,6 +746,21 @@ class ChessLearner:
                     hint_surface = self.font.render(hint, True, ACCENT_COLOR)
                     self.screen.blit(hint_surface, (panel_x + 10, info_y + 30))
 
+        elif self.mode == GameMode.ENDGAME:
+            for btn in self.game_buttons[:4]:
+                btn.draw(self.screen, self.small_font)
+
+            # Show endgame info
+            if self.current_endgame:
+                info_y = 400
+                goal = self.small_font.render(f"Goal: {self.current_endgame.goal}", True, ACCENT_COLOR)
+                self.screen.blit(goal, (panel_x + 10, info_y))
+
+                progress = self.endgames.get_progress_message()
+                if progress:
+                    prog_surface = self.small_font.render(progress, True, TEXT_COLOR)
+                    self.screen.blit(prog_surface, (panel_x + 10, info_y + 25))
+
         elif self.mode == GameMode.REVIEW:
             for btn in self.review_buttons:
                 btn.draw(self.screen, self.small_font)
@@ -806,6 +880,31 @@ class ChessLearner:
         self.message = f"Practice the {opening.name}. {opening.description}"
         self.message_color = TEXT_COLOR
         self.opening_list_buttons = []
+
+    def _show_endgames(self):
+        """Show endgame selection."""
+        self.mode = GameMode.MENU
+        endgames = self.endgames.get_all_endgames()[:8]
+
+        self.endgame_list_buttons = []
+        for i, endgame in enumerate(endgames):
+            btn = Button(WINDOW_WIDTH // 2 + 150, 160 + i * 42, 200, 38, endgame.name)
+            self.endgame_list_buttons.append(btn)
+
+        self.puzzle_list_buttons = []
+        self.opening_list_buttons = []
+
+    def _start_endgame(self, endgame: Endgame):
+        """Start endgame practice."""
+        self.mode = GameMode.ENDGAME
+        self.current_endgame = endgame
+        board = self.endgames.start_practice(endgame)
+        self.game.board = board.copy()
+        self.board_view.set_last_move(None)
+        self.selected_square = None
+        self.message = endgame.description
+        self.message_color = TEXT_COLOR
+        self.endgame_list_buttons = []
 
     def _start_review(self):
         """Start game review."""
