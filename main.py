@@ -530,7 +530,7 @@ class ChessLearner:
             self.board_view.set_last_move(move)
 
             # Play sound after move
-            if self.game.is_checkmate():
+            if self.game.board.is_checkmate():
                 self.sounds.play('checkmate')
             elif self.game.is_check():
                 self.sounds.play('check')
@@ -612,7 +612,7 @@ class ChessLearner:
                     self.board_view.set_last_move(ai_move)
 
                     # Play sound after move
-                    if self.game.is_checkmate():
+                    if self.game.board.is_checkmate():
                         self.sounds.play('checkmate')
                     elif self.game.is_check():
                         self.sounds.play('check')
