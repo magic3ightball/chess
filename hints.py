@@ -170,3 +170,197 @@ class HintSystem:
         board.pop()
 
         return " | ".join(explanations)
+
+    def explain_move_quality(self, board: chess.Board, played_move: chess.Move) -> str:
+        """Analyze move quality and explain why it's good or bad."""
+        if not self.ai.engine:
+            return self.explain_move(board, played_move)
+
+        try:
+            # Get evaluation before move
+            info_before = self.ai.engine.analyse(board, chess.engine.Limit(time=0.2))
+            best_move = info_before.get("pv", [None])[0]
+            score_before = info_before.get("score")
+
+            # Get evaluation after played move
+            board.push(played_move)
+            info_after = self.ai.engine.analyse(board, chess.engine.Limit(time=0.1))
+            score_after = info_after.get("score")
+            board.pop()
+
+            # Calculate centipawn loss
+            if score_before and score_after:
+                cp_before = self._get_cp_score(score_before, board.turn)
+                cp_after = self._get_cp_score(score_after, board.turn)
+                cp_loss = cp_before - cp_after if cp_before and cp_after else 0
+
+                # Classify move quality
+                quality, emoji = self._classify_move(cp_loss, played_move, best_move)
+
+                # Build explanation
+                explanation = f"{emoji} {quality}"
+
+                # Add specific reason
+                reason = self._get_move_reason(board, played_move, best_move, cp_loss)
+                if reason:
+                    explanation += f" - {reason}"
+
+                # Suggest better move if significant loss
+                if cp_loss > 50 and best_move and best_move != played_move:
+                    try:
+                        better_san = board.san(best_move)
+                        explanation += f" (Better: {better_san})"
+                    except:
+                        pass
+
+                return explanation
+
+        except Exception as e:
+            pass
+
+        # Fallback to basic explanation
+        return self.explain_move(board, played_move)
+
+    def _get_cp_score(self, score, turn: bool) -> Optional[int]:
+        """Convert score to centipawns from current player's perspective."""
+        if score.is_mate():
+            mate_in = score.white().mate()
+            if mate_in:
+                # Large positive/negative for mate
+                return 10000 if (mate_in > 0) == turn else -10000
+            return 0
+        cp = score.white().score()
+        if cp is not None:
+            return cp if turn else -cp
+        return None
+
+    def _classify_move(self, cp_loss: int, played: chess.Move, best: chess.Move) -> Tuple[str, str]:
+        """Classify move quality based on centipawn loss."""
+        if best and played == best:
+            return "Best move!", "✓"
+        elif cp_loss <= 10:
+            return "Excellent", "✓"
+        elif cp_loss <= 30:
+            return "Good move", "○"
+        elif cp_loss <= 80:
+            return "Inaccuracy", "?"
+        elif cp_loss <= 200:
+            return "Mistake", "✗"
+        else:
+            return "Blunder!", "✗✗"
+
+    def _get_move_reason(self, board: chess.Board, played: chess.Move, best: chess.Move, cp_loss: int) -> str:
+        """Get a human-readable reason for move quality."""
+        reasons = []
+
+        piece = board.piece_at(played.from_square)
+        if not piece:
+            return ""
+
+        # Check what the played move does
+        is_capture = board.is_capture(played)
+        is_castle = board.is_castling(played)
+
+        # Make the move temporarily to analyze
+        board.push(played)
+        gives_check = board.is_check()
+        is_checkmate = board.is_checkmate()
+        board.pop()
+
+        if is_checkmate:
+            return "Checkmate!"
+
+        if gives_check:
+            reasons.append("Gives check")
+
+        if is_castle:
+            reasons.append("King safety improved")
+
+        if is_capture:
+            captured = board.piece_at(played.to_square)
+            if captured:
+                # Check if it's a good capture
+                piece_values = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3,
+                               chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+                gain = piece_values.get(captured.piece_type, 0) - piece_values.get(piece.piece_type, 0)
+                if gain > 0:
+                    reasons.append("Wins material")
+                elif gain < 0 and cp_loss > 50:
+                    reasons.append("Loses material")
+
+        # Check for tactics if move was bad
+        if cp_loss > 50 and best:
+            tactic = self._detect_tactic(board, best)
+            if tactic:
+                reasons.append(f"Missed {tactic}")
+
+        # Development in opening
+        if len(board.move_stack) < 12:
+            if piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+                if not is_capture:
+                    reasons.append("Develops piece")
+            # Check center control
+            if piece.piece_type == chess.PAWN:
+                if played.to_square in [chess.E4, chess.D4, chess.E5, chess.D5]:
+                    reasons.append("Controls center")
+
+        # Hanging piece detection
+        board.push(played)
+        if self._is_piece_hanging(board, played.to_square):
+            reasons.append("Piece may be vulnerable")
+        board.pop()
+
+        return "; ".join(reasons[:2]) if reasons else ""
+
+    def _detect_tactic(self, board: chess.Board, move: chess.Move) -> Optional[str]:
+        """Detect if a move involves a tactic."""
+        board.push(move)
+
+        # Check for fork
+        piece = board.piece_at(move.to_square)
+        if piece and piece.piece_type in [chess.KNIGHT, chess.QUEEN, chess.PAWN]:
+            attacked_valuable = 0
+            for sq in chess.SQUARES:
+                target = board.piece_at(sq)
+                if target and target.color != piece.color:
+                    if board.is_attacked_by(piece.color, sq):
+                        if target.piece_type in [chess.QUEEN, chess.ROOK, chess.KING]:
+                            attacked_valuable += 1
+            if attacked_valuable >= 2:
+                board.pop()
+                return "fork"
+
+        # Check for discovered attack
+        if board.is_check():
+            if piece and board.piece_at(move.to_square) != board.king(not piece.color):
+                board.pop()
+                return "discovered check"
+
+        board.pop()
+
+        # Check for pin
+        for sq in chess.SQUARES:
+            target = board.piece_at(sq)
+            if target and target.color != board.turn:
+                if self._is_pinned_after_move(board, move, sq):
+                    return "pin"
+
+        return None
+
+    def _is_pinned_after_move(self, board: chess.Board, move: chess.Move, square: int) -> bool:
+        """Check if a piece becomes pinned after a move."""
+        board.push(move)
+        is_pinned = board.is_pinned(not board.turn, square)
+        board.pop()
+        return is_pinned
+
+    def _is_piece_hanging(self, board: chess.Board, square: int) -> bool:
+        """Check if a piece on a square is hanging (attacked but not defended)."""
+        piece = board.piece_at(square)
+        if not piece:
+            return False
+
+        attackers = len(board.attackers(not piece.color, square))
+        defenders = len(board.attackers(piece.color, square))
+
+        return attackers > defenders

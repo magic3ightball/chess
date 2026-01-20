@@ -462,8 +462,8 @@ class ChessLearner:
     def _make_move(self, move: chess.Move):
         """Make a move and handle mode-specific logic."""
         if self.mode == GameMode.PLAY_VS_AI:
-            # Get explanation BEFORE making the move
-            self.message = self.hints.explain_move(self.game.board, move)
+            # Get move quality explanation BEFORE making the move
+            self.message = self.hints.explain_move_quality(self.game.board, move)
             self.game.make_move(move)
             self.board_view.set_last_move(move)
 
