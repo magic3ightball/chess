@@ -3,8 +3,22 @@
 import pygame
 import chess
 import sys
+import socket
 from typing import Optional, List
 from enum import Enum
+
+# Single instance lock
+LOCK_PORT = 47193  # Arbitrary port for single-instance check
+
+def acquire_lock():
+    """Try to acquire single-instance lock. Returns socket if successful, None if already running."""
+    try:
+        lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        lock_socket.bind(('127.0.0.1', LOCK_PORT))
+        lock_socket.listen(1)
+        return lock_socket
+    except socket.error:
+        return None
 
 from game import ChessGame
 from board import ChessBoard
@@ -943,5 +957,29 @@ class ChessLearner:
 
 
 if __name__ == "__main__":
-    app = ChessLearner()
-    app.run()
+    # Check for existing instance
+    lock_socket = acquire_lock()
+    if lock_socket is None:
+        print("Chess Learner is already running!")
+        # Show a message box if pygame can init
+        try:
+            pygame.init()
+            pygame.display.set_mode((300, 100))
+            pygame.display.set_caption("Chess Learner")
+            font = pygame.font.SysFont('arial', 16)
+            screen = pygame.display.get_surface()
+            screen.fill((50, 50, 55))
+            text = font.render("Chess Learner is already running!", True, (220, 220, 220))
+            screen.blit(text, (20, 40))
+            pygame.display.flip()
+            pygame.time.wait(2000)
+            pygame.quit()
+        except:
+            pass
+        sys.exit(1)
+
+    try:
+        app = ChessLearner()
+        app.run()
+    finally:
+        lock_socket.close()
