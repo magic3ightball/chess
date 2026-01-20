@@ -218,14 +218,22 @@ class ChessLearner:
             if btn.is_clicked(pos):
                 if i == 0:  # Play vs AI (new game)
                     self.paused_game = None  # Clear any paused game
+                    self.puzzle_list_buttons = []
+                    self.opening_list_buttons = []
                     self._start_game()
                 elif i == 1:  # Resume Game
+                    self.puzzle_list_buttons = []
+                    self.opening_list_buttons = []
                     self._resume_game()
                 elif i == 2:  # Puzzles
+                    self.opening_list_buttons = []  # Clear other sub-menu
                     self._show_puzzles()
                 elif i == 3:  # Openings
+                    self.puzzle_list_buttons = []  # Clear other sub-menu
                     self._show_openings()
                 elif i == 4:  # Review
+                    self.puzzle_list_buttons = []
+                    self.opening_list_buttons = []
                     self._start_review()
                 elif i == 5:  # Quit
                     self.running = False
