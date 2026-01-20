@@ -28,6 +28,7 @@ from puzzles import PuzzleManager, Puzzle
 from openings import OpeningTrainer, Opening
 from review import GameReviewer
 from endgames import EndgameTrainer, Endgame
+from sounds import SoundSystem
 
 # Window settings
 WINDOW_WIDTH = 1000
@@ -106,6 +107,7 @@ class ChessLearner:
         self.openings = OpeningTrainer()
         self.reviewer = GameReviewer(self.ai)
         self.endgames = EndgameTrainer()
+        self.sounds = SoundSystem()
 
         # State
         self.mode = GameMode.MENU
@@ -142,8 +144,9 @@ class ChessLearner:
             Button(BOARD_X + BOARD_SIZE + 140, 500, 100, 35, "Undo"),
             Button(BOARD_X + BOARD_SIZE + 30, 545, 100, 35, "New Game"),
             Button(BOARD_X + BOARD_SIZE + 140, 545, 100, 35, "Menu"),
-            Button(BOARD_X + BOARD_SIZE + 30, 590, 100, 35, "Flip"),
-            Button(BOARD_X + BOARD_SIZE + 140, 590, 100, 35, "Eval"),  # Toggle eval display
+            Button(BOARD_X + BOARD_SIZE + 30, 590, 50, 35, "Flip"),
+            Button(BOARD_X + BOARD_SIZE + 85, 590, 50, 35, "Eval"),
+            Button(BOARD_X + BOARD_SIZE + 140, 590, 50, 35, "Sound"),
         ]
 
         self.difficulty_buttons = [
@@ -379,6 +382,9 @@ class ChessLearner:
                         self.message = "Evaluation display ON"
                     else:
                         self.message = "Evaluation display OFF"
+                elif i == 6:  # Sound toggle
+                    muted = self.sounds.toggle_mute()
+                    self.message = "Sound OFF" if muted else "Sound ON"
                 return
 
         for i, btn in enumerate(self.difficulty_buttons):
@@ -516,8 +522,20 @@ class ChessLearner:
             badge_type, explanation = self.hints.explain_move_quality(self.game.board, move)
             self.current_badge = badge_type
             self.message = explanation
+
+            # Determine sound to play
+            sound_type = self._get_move_sound(self.game.board, move)
+
             self.game.make_move(move)
             self.board_view.set_last_move(move)
+
+            # Play sound after move
+            if self.game.is_checkmate():
+                self.sounds.play('checkmate')
+            elif self.game.is_check():
+                self.sounds.play('check')
+            else:
+                self.sounds.play(sound_type)
 
             # Update evaluation if enabled
             if self.show_eval:
@@ -541,6 +559,9 @@ class ChessLearner:
                 # Sync board with puzzle manager's board
                 self.game.board = self.puzzles.practice_board.copy()
                 self.board_view.set_last_move(move)
+                self.sounds.play('move')
+            else:
+                self.sounds.play('illegal')
 
         elif self.mode == GameMode.OPENING:
             correct, msg = self.openings.check_move(move)
@@ -549,10 +570,13 @@ class ChessLearner:
             if correct:
                 self.game.board = self.openings.practice_board.copy()
                 self.board_view.set_last_move(move)
+                self.sounds.play('move')
                 # Show key idea
                 idea = self.openings.get_current_idea()
                 if idea:
                     self.message += f" | Tip: {idea}"
+            else:
+                self.sounds.play('illegal')
 
         elif self.mode == GameMode.ENDGAME:
             success, msg = self.endgames.make_move(move)
@@ -561,6 +585,19 @@ class ChessLearner:
             if self.endgames.practice_board:
                 self.game.board = self.endgames.practice_board.copy()
                 self.board_view.set_last_move(move)
+                if "Checkmate" in msg:
+                    self.sounds.play('checkmate')
+                else:
+                    self.sounds.play('move')
+
+    def _get_move_sound(self, board: chess.Board, move: chess.Move) -> str:
+        """Determine which sound to play for a move."""
+        if board.is_castling(move):
+            return 'castle'
+        elif board.is_capture(move):
+            return 'capture'
+        else:
+            return 'move'
 
     def _update(self):
         """Update game state."""
@@ -568,8 +605,19 @@ class ChessLearner:
             if not self.game_over and self.game.get_turn() != self.player_color:
                 ai_move = self.ai.get_best_move(self.game.board)
                 if ai_move:
+                    # Determine sound before making move
+                    sound_type = self._get_move_sound(self.game.board, ai_move)
+
                     self.game.make_move(ai_move)
                     self.board_view.set_last_move(ai_move)
+
+                    # Play sound after move
+                    if self.game.is_checkmate():
+                        self.sounds.play('checkmate')
+                    elif self.game.is_check():
+                        self.sounds.play('check')
+                    else:
+                        self.sounds.play(sound_type)
 
                     # Update evaluation if enabled
                     if self.show_eval:
@@ -783,6 +831,9 @@ class ChessLearner:
                 # Highlight Eval button if enabled
                 if i == 5 and self.show_eval:
                     pygame.draw.rect(self.screen, SUCCESS_COLOR, btn.rect, 2, border_radius=5)
+                # Highlight Sound button if sound is ON
+                if i == 6 and not self.sounds.is_muted():
+                    pygame.draw.rect(self.screen, SUCCESS_COLOR, btn.rect, 2, border_radius=5)
 
         elif self.mode == GameMode.PUZZLE:
             for btn in self.game_buttons[:4]:
@@ -894,6 +945,8 @@ class ChessLearner:
         self.white_win_prob = 50
         self.eval_reason = "Starting position"
         self.current_badge = None
+        # Play game start sound
+        self.sounds.play('game_start')
 
     def _show_puzzles(self):
         """Show puzzle selection."""
