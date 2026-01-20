@@ -171,10 +171,17 @@ class HintSystem:
 
         return " | ".join(explanations)
 
-    def explain_move_quality(self, board: chess.Board, played_move: chess.Move) -> str:
-        """Analyze move quality and explain why it's good or bad."""
+    def explain_move_quality(self, board: chess.Board, played_move: chess.Move) -> Tuple[str, str]:
+        """Analyze move quality. Returns (badge_type, explanation)."""
+        return self._analyze_move_quality(board, played_move)
+
+    def _analyze_move_quality(self, board: chess.Board, played_move: chess.Move) -> Tuple[str, str]:
+        """Analyze move quality and explain why it's good or bad.
+        Returns (badge_type, explanation) where badge_type is one of:
+        'best', 'excellent', 'good', 'inaccuracy', 'mistake', 'blunder'
+        """
         if not self.ai.engine:
-            return self.explain_move(board, played_move)
+            return ("good", self.explain_move(board, played_move))
 
         try:
             # Get evaluation before move
@@ -195,10 +202,10 @@ class HintSystem:
                 cp_loss = cp_before - cp_after if cp_before and cp_after else 0
 
                 # Classify move quality
-                quality, emoji = self._classify_move(cp_loss, played_move, best_move)
+                quality, badge_type = self._classify_move(cp_loss, played_move, best_move)
 
                 # Build explanation
-                explanation = f"{emoji} {quality}"
+                explanation = quality
 
                 # Add specific reason
                 reason = self._get_move_reason(board, played_move, best_move, cp_loss)
@@ -213,13 +220,13 @@ class HintSystem:
                     except:
                         pass
 
-                return explanation
+                return (badge_type, explanation)
 
         except Exception as e:
             pass
 
         # Fallback to basic explanation
-        return self.explain_move(board, played_move)
+        return ("good", self.explain_move(board, played_move))
 
     def _get_cp_score(self, score, turn: bool) -> Optional[int]:
         """Convert score to centipawns from current player's perspective."""
@@ -235,19 +242,20 @@ class HintSystem:
         return None
 
     def _classify_move(self, cp_loss: int, played: chess.Move, best: chess.Move) -> Tuple[str, str]:
-        """Classify move quality based on centipawn loss."""
+        """Classify move quality based on centipawn loss.
+        Returns (quality_text, badge_type)."""
         if best and played == best:
-            return "Best move!", "✓"
+            return "Best move!", "best"
         elif cp_loss <= 10:
-            return "Excellent", "✓"
+            return "Excellent", "excellent"
         elif cp_loss <= 30:
-            return "Good move", "○"
+            return "Good move", "good"
         elif cp_loss <= 80:
-            return "Inaccuracy", "?"
+            return "Inaccuracy", "inaccuracy"
         elif cp_loss <= 200:
-            return "Mistake", "✗"
+            return "Mistake", "mistake"
         else:
-            return "Blunder!", "✗✗"
+            return "Blunder!", "blunder"
 
     def _get_move_reason(self, board: chess.Board, played: chess.Move, best: chess.Move, cp_loss: int) -> str:
         """Get a human-readable reason for move quality."""

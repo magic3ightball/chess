@@ -165,6 +165,56 @@ class ChessLearner:
         self.opening_list_buttons: List[Button] = []
         self.endgame_list_buttons: List[Button] = []
 
+        # Move quality badges
+        self.current_badge: Optional[str] = None
+        self.badge_surfaces = self._create_badge_surfaces()
+
+    def _create_badge_surfaces(self) -> dict:
+        """Create or load badge surfaces for move quality indicators."""
+        import os
+        badges = {}
+        badge_size = 24
+
+        # Badge configurations: (color, symbol)
+        badge_config = {
+            'best': ((76, 175, 80), '★'),      # Green
+            'excellent': ((76, 175, 80), '✓'),  # Green
+            'good': ((100, 149, 237), '●'),     # Blue
+            'inaccuracy': ((255, 193, 7), '?'), # Yellow
+            'mistake': ((255, 152, 0), '!'),    # Orange
+            'blunder': ((244, 67, 54), '✗'),    # Red
+        }
+
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        icons_dir = os.path.join(script_dir, 'assets', 'icons')
+
+        for badge_type, (color, symbol) in badge_config.items():
+            # Try to load custom image first
+            image_path = os.path.join(icons_dir, f'{badge_type}.png')
+            if os.path.exists(image_path):
+                try:
+                    img = pygame.image.load(image_path).convert_alpha()
+                    badges[badge_type] = pygame.transform.smoothscale(img, (badge_size, badge_size))
+                    continue
+                except:
+                    pass
+
+            # Create default badge (colored circle with symbol)
+            surface = pygame.Surface((badge_size, badge_size), pygame.SRCALPHA)
+
+            # Draw circle background
+            pygame.draw.circle(surface, color, (badge_size // 2, badge_size // 2), badge_size // 2)
+
+            # Draw symbol
+            font = pygame.font.SysFont('arial', 14, bold=True)
+            text = font.render(symbol, True, (255, 255, 255))
+            text_rect = text.get_rect(center=(badge_size // 2, badge_size // 2))
+            surface.blit(text, text_rect)
+
+            badges[badge_type] = surface
+
+        return badges
+
     def run(self):
         """Main game loop."""
         import traceback
@@ -463,7 +513,9 @@ class ChessLearner:
         """Make a move and handle mode-specific logic."""
         if self.mode == GameMode.PLAY_VS_AI:
             # Get move quality explanation BEFORE making the move
-            self.message = self.hints.explain_move_quality(self.game.board, move)
+            badge_type, explanation = self.hints.explain_move_quality(self.game.board, move)
+            self.current_badge = badge_type
+            self.message = explanation
             self.game.make_move(move)
             self.board_view.set_last_move(move)
 
@@ -643,15 +695,24 @@ class ChessLearner:
 
             content_y += 5  # Add some spacing after eval section
 
-        # Message
+        # Message with badge
         if self.message:
+            badge_offset = 0
+
+            # Draw badge if in Play vs AI mode and badge exists
+            if self.mode == GameMode.PLAY_VS_AI and self.current_badge and self.current_badge in self.badge_surfaces:
+                badge = self.badge_surfaces[self.current_badge]
+                self.screen.blit(badge, (panel_x + 10, content_y))
+                badge_offset = 30  # Space for badge
+
             # Word wrap message
             words = self.message.split()
             lines = []
             current_line = ""
+            max_width = 200 if badge_offset else 230
             for word in words:
                 test_line = current_line + " " + word if current_line else word
-                if self.small_font.size(test_line)[0] < 230:
+                if self.small_font.size(test_line)[0] < max_width:
                     current_line = test_line
                 else:
                     lines.append(current_line)
@@ -662,7 +723,8 @@ class ChessLearner:
             max_lines = 3 if self.show_eval else 4
             for i, line in enumerate(lines[:max_lines]):
                 msg_surface = self.small_font.render(line, True, self.message_color)
-                self.screen.blit(msg_surface, (panel_x + 10, content_y + i * 18))
+                x_pos = panel_x + 10 + (badge_offset if i == 0 else 0)
+                self.screen.blit(msg_surface, (x_pos, content_y + i * 18))
             content_y += max_lines * 18 + 5
 
         # Move history - position based on content above
@@ -831,6 +893,7 @@ class ChessLearner:
         self.current_eval = "0.00"
         self.white_win_prob = 50
         self.eval_reason = "Starting position"
+        self.current_badge = None
 
     def _show_puzzles(self):
         """Show puzzle selection."""
