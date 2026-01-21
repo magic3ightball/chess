@@ -234,7 +234,7 @@ class ChessBoard:
         """Draw file and rank labels."""
         label_color = (100, 100, 100)
         files = 'abcdefgh' if not self.flipped else 'hgfedcba'
-        ranks = '12345678' if not self.flipped else '87654321'
+        ranks = '87654321' if not self.flipped else '12345678'
 
         for i, f in enumerate(files):
             text = self.label_font.render(f, True, label_color)

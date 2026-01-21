@@ -19,7 +19,7 @@ class SoundSystem:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         sounds_dir = os.path.join(script_dir, 'assets', 'sounds')
 
-        sound_types = ['move', 'capture', 'check', 'checkmate', 'castle', 'illegal', 'game_start']
+        sound_types = ['move', 'capture', 'check', 'checkmate', 'defeat', 'castle', 'illegal', 'game_start']
 
         for sound_type in sound_types:
             # Try to load custom sound file
@@ -93,6 +93,23 @@ class SoundSystem:
                 envelope = np.exp(-note_t * 5)
                 wave[start:end] = note_wave * envelope
             wave = wave * 0.3
+
+        elif sound_type == 'defeat':
+            # Sad descending notes - opposite of victory
+            duration = 0.8
+            samples = int(sample_rate * duration)
+            t = np.linspace(0, duration, samples, False)
+            wave = np.zeros(samples)
+            notes = [392, 330, 262, 196]  # G4, E4, C4, G3 - descending
+            note_duration = duration / len(notes)
+            for i, freq in enumerate(notes):
+                start = int(i * note_duration * sample_rate)
+                end = int((i + 1) * note_duration * sample_rate)
+                note_t = t[start:end] - t[start]
+                note_wave = np.sin(2 * np.pi * freq * note_t)
+                envelope = np.exp(-note_t * 3)  # Slower decay for sadder feel
+                wave[start:end] = note_wave * envelope
+            wave = wave * 0.25
 
         elif sound_type == 'castle':
             # Sliding sound - descending sweep

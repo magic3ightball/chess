@@ -146,7 +146,7 @@ class ChessLearner:
             Button(BOARD_X + BOARD_SIZE + 140, 545, 100, 35, "Menu"),
             Button(BOARD_X + BOARD_SIZE + 30, 590, 50, 35, "Flip"),
             Button(BOARD_X + BOARD_SIZE + 85, 590, 50, 35, "Eval"),
-            Button(BOARD_X + BOARD_SIZE + 140, 590, 50, 35, "Sound"),
+            Button(BOARD_X + BOARD_SIZE + 140, 590, 55, 35, "Sound"),
         ]
 
         self.difficulty_buttons = [
@@ -531,7 +531,11 @@ class ChessLearner:
 
             # Play sound after move
             if self.game.board.is_checkmate():
-                self.sounds.play('checkmate')
+                # White's turn means white is checkmated (black wins)
+                if self.game.board.turn == chess.WHITE:
+                    self.sounds.play('defeat')
+                else:
+                    self.sounds.play('checkmate')
             elif self.game.is_check():
                 self.sounds.play('check')
             else:
@@ -613,7 +617,11 @@ class ChessLearner:
 
                     # Play sound after move
                     if self.game.board.is_checkmate():
-                        self.sounds.play('checkmate')
+                        # AI checkmated player = defeat
+                        if self.game.board.turn == chess.WHITE:
+                            self.sounds.play('defeat')
+                        else:
+                            self.sounds.play('checkmate')
                     elif self.game.is_check():
                         self.sounds.play('check')
                     else:
