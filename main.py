@@ -715,8 +715,12 @@ class ChessLearner:
         turn_surface = self.font.render(turn_text, True, TEXT_COLOR)
         self.screen.blit(turn_surface, (panel_x + 10, BOARD_Y + 10))
 
+        # Captured pieces display
+        if self.mode in [GameMode.PLAY_VS_AI, GameMode.REVIEW]:
+            self._draw_captured_pieces(panel_x + 10, BOARD_Y + 32)
+
         # Track vertical offset for dynamic layout
-        content_y = BOARD_Y + 35
+        content_y = BOARD_Y + 70
 
         # Evaluation bar (if enabled)
         if self.show_eval and self.mode == GameMode.PLAY_VS_AI:
@@ -903,6 +907,39 @@ class ChessLearner:
                 if analysis.best_move_san and analysis.best_move_san != analysis.san:
                     better = self.small_font.render(f"Better: {analysis.best_move_san}", True, TEXT_COLOR)
                     self.screen.blit(better, (panel_x + 10, 465))
+
+    def _draw_captured_pieces(self, x: int, y: int):
+        """Draw captured pieces for both sides."""
+        white_captured, black_captured = self.game.get_captured_pieces()
+
+        icon_size = 20
+        spacing = 18
+
+        # Sort by piece value (queen, rook, bishop, knight, pawn)
+        piece_order = {chess.QUEEN: 0, chess.ROOK: 1, chess.BISHOP: 2, chess.KNIGHT: 3, chess.PAWN: 4}
+        white_captured.sort(key=lambda p: piece_order.get(p, 5))
+        black_captured.sort(key=lambda p: piece_order.get(p, 5))
+
+        # Draw black pieces captured by white (displayed as black icons)
+        draw_x = x
+        for piece_type in white_captured:
+            key = (chess.BLACK, piece_type)
+            if key in self.board_view.piece_surfaces:
+                # Scale down the piece surface
+                original = self.board_view.piece_surfaces[key]
+                scaled = pygame.transform.smoothscale(original, (icon_size, icon_size))
+                self.screen.blit(scaled, (draw_x, y))
+                draw_x += spacing
+
+        # Draw white pieces captured by black (displayed as white icons)
+        draw_x = x + 120
+        for piece_type in black_captured:
+            key = (chess.WHITE, piece_type)
+            if key in self.board_view.piece_surfaces:
+                original = self.board_view.piece_surfaces[key]
+                scaled = pygame.transform.smoothscale(original, (icon_size, icon_size))
+                self.screen.blit(scaled, (draw_x, y))
+                draw_x += spacing
 
     def _resume_game(self):
         """Resume a paused game."""
